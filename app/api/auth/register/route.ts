@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { signAuthToken } from "@/lib/jwt";
 
 const RegisterSchema = z.object({
   fullName: z.string().min(2),
@@ -48,9 +49,14 @@ export async function POST(req: Request) {
       }
     });
 
+    const token = await signAuthToken({
+      userId: user.id,
+      role: user.role
+    });
+
     const res = NextResponse.json({ user });
 
-    res.cookies.set("attentivo_user_id", user.id, {
+    res.cookies.set("attentivo_session", token, {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",

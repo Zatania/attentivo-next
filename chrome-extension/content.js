@@ -1,5 +1,3 @@
-let activePopupKey = null;
-
 function buildQuestionKey(sessionId, questionId) {
   return `attentivo:${sessionId}:${questionId}`;
 }
@@ -12,48 +10,49 @@ function removeExistingPopup() {
 chrome.runtime.onMessage.addListener(async (message) => {
   if (message.type !== "ATTENTIVO_QUESTION") return;
 
-  const { sessionId, question } = message.payload;
+  const { sessionId, question, appUrl } = message.payload;
 
   if (!question) return;
 
   const questionKey = buildQuestionKey(sessionId, question.id);
 
-  chrome.storage.local.get(["submittedQuestionKeys", "pendingQuestionKey"], (result) => {
+  chrome.storage.local.get(["submittedQuestionKeys"], (result) => {
     const submittedQuestionKeys = result.submittedQuestionKeys || [];
 
-    if (submittedQuestionKeys.includes(questionKey)) {
-      return;
-    }
-
-    activePopupKey = questionKey;
+    if (submittedQuestionKeys.includes(questionKey)) return;
 
     chrome.storage.local.set({
-      pendingQuestionKey: questionKey,
       pendingQuestionPayload: {
         sessionId,
-        question
+        question,
+        appUrl
       }
     });
 
-    showQuestionPopup(sessionId, question);
+    showQuestionPopup(sessionId, question, appUrl);
   });
 });
 
-chrome.storage.local.get(["pendingQuestionPayload", "submittedQuestionKeys"], (result) => {
-  const pending = result.pendingQuestionPayload;
-  const submittedQuestionKeys = result.submittedQuestionKeys || [];
+chrome.storage.local.get(
+  ["pendingQuestionPayload", "submittedQuestionKeys"],
+  (result) => {
+    const pending = result.pendingQuestionPayload;
+    const submittedQuestionKeys = result.submittedQuestionKeys || [];
 
-  if (!pending?.sessionId || !pending?.question?.id) return;
+    if (!pending?.sessionId || !pending?.question?.id) return;
 
-  const questionKey = buildQuestionKey(pending.sessionId, pending.question.id);
+    const questionKey = buildQuestionKey(
+      pending.sessionId,
+      pending.question.id
+    );
 
-  if (submittedQuestionKeys.includes(questionKey)) return;
+    if (submittedQuestionKeys.includes(questionKey)) return;
 
-  activePopupKey = questionKey;
-  showQuestionPopup(pending.sessionId, pending.question);
-});
+    showQuestionPopup(pending.sessionId, pending.question, pending.appUrl);
+  }
+);
 
-function showQuestionPopup(sessionId, question) {
+function showQuestionPopup(sessionId, question, appUrl) {
   removeExistingPopup();
 
   const popup = document.createElement("div");
@@ -102,7 +101,7 @@ function showQuestionPopup(sessionId, question) {
         }
       });
 
-      await submitAnswer(sessionId, question.id, selectedOption);
+      await submitAnswer(appUrl, sessionId, question.id, selectedOption);
     });
   });
 }
@@ -128,7 +127,7 @@ function renderOption(letter, text) {
   `;
 }
 
-async function submitAnswer(sessionId, questionId, selectedOption) {
+async function submitAnswer(appUrl, sessionId, questionId, selectedOption) {
   const status = document.getElementById("attentivo-status");
 
   if (status) {
@@ -137,7 +136,7 @@ async function submitAnswer(sessionId, questionId, selectedOption) {
 
   chrome.storage.local.get(["extensionToken", "submittedQuestionKeys"], async (result) => {
     try {
-      const response = await fetch("http://localhost:3000/api/responses/submit", {
+      const response = await fetch(`${appUrl}/api/responses/submit`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -165,7 +164,6 @@ async function submitAnswer(sessionId, questionId, selectedOption) {
         submittedQuestionKeys: Array.from(
           new Set([...submittedQuestionKeys, questionKey])
         ),
-        pendingQuestionKey: null,
         pendingQuestionPayload: null,
         pendingAnswer: null
       });
@@ -179,7 +177,8 @@ async function submitAnswer(sessionId, questionId, selectedOption) {
       }, 1000);
     } catch {
       if (status) {
-        status.textContent = "Network error. Your selected answer was saved locally and can be retried.";
+        status.textContent =
+          "Network error. Your selected answer was saved locally and can be retried.";
       }
     }
   });

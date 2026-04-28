@@ -29,16 +29,16 @@ async function checkActiveSession() {
       for (const tab of tabs) {
         if (!tab.id || !tab.url) continue;
 
-        const allowed =
-          tab.url.includes("meet.google.com") ||
-          tab.url.includes("zoom.us") ||
-          tab.url.includes("teams.microsoft.com");
+        const isGoogleMeet = tab.url.includes("meet.google.com");
 
-        if (!allowed) continue;
+        if (!isGoogleMeet) continue;
 
         chrome.tabs.sendMessage(tab.id, {
           type: "ATTENTIVO_QUESTION",
-          payload: data
+          payload: {
+            ...data,
+            appUrl: APP_URL
+          }
         });
       }
     });

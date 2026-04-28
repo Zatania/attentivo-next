@@ -22,6 +22,11 @@ enum AttentionLevel {
   LOW
 }
 
+enum ResponseStatus {
+  ANSWERED
+  UNANSWERED
+}
+
 model User {
   id             String   @id @default(cuid())
   fullName       String
@@ -32,7 +37,7 @@ model User {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  classesTeaching Class[]      @relation("TeacherClasses")
+  classesTeaching Class[]          @relation("TeacherClasses")
   enrollments     Enrollment[]
   responses       Response[]
   scores          AttentionScore[]
@@ -47,12 +52,12 @@ model Class {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  teacher     User       @relation("TeacherClasses", fields: [teacherId], references: [id], onDelete: Cascade)
+  teacher     User             @relation("TeacherClasses", fields: [teacherId], references: [id], onDelete: Cascade)
   enrollments Enrollment[]
   sessions    ClassSession[]
   questions   Question[]
-  responses Response[]
-  scores    AttentionScore[]
+  responses   Response[]
+  scores      AttentionScore[]
 
   @@index([teacherId])
 }
@@ -71,14 +76,14 @@ model Enrollment {
 }
 
 model ClassSession {
-  id              String        @id @default(cuid())
-  classId          String
-  teacherId        String
-  status           SessionStatus @default(ACTIVE)
-  intervalSeconds  Int           @default(300)
-  startedAt        DateTime      @default(now())
-  endedAt          DateTime?
-  createdAt        DateTime      @default(now())
+  id             String        @id @default(cuid())
+  classId         String
+  teacherId       String
+  status          SessionStatus @default(ACTIVE)
+  intervalSeconds Int           @default(300)
+  startedAt       DateTime      @default(now())
+  endedAt         DateTime?
+  createdAt       DateTime      @default(now())
 
   class            Class             @relation(fields: [classId], references: [id], onDelete: Cascade)
   sessionQuestions SessionQuestion[]
@@ -125,14 +130,17 @@ model SessionQuestion {
 }
 
 model Response {
-  id             String   @id @default(cuid())
+  id             String         @id @default(cuid())
   sessionId      String
   classId        String
   questionId     String
   studentId      String
-  selectedOption String
-  isCorrect      Boolean
-  respondedAt    DateTime @default(now())
+  selectedOption String?
+  isCorrect      Boolean        @default(false)
+  responseStatus ResponseStatus @default(ANSWERED)
+  dueAt          DateTime
+  responseTimeMs Int?
+  respondedAt    DateTime       @default(now())
 
   session  ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   class    Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -143,20 +151,23 @@ model Response {
   @@index([classId])
   @@index([sessionId, classId])
   @@index([studentId])
+  @@index([responseStatus])
 }
 
 model AttentionScore {
-  id              String         @id @default(cuid())
-  sessionId       String
-  classId         String
-  studentId       String
-  answeredCount   Int
-  totalQuestions  Int
-  correctCount    Int
-  attentionScore  Float
-  evaluationGrade Float
-  level           AttentionLevel
-  computedAt      DateTime       @default(now())
+  id                    String         @id @default(cuid())
+  sessionId             String
+  classId               String
+  studentId             String
+  answeredCount         Int
+  unansweredCount       Int            @default(0)
+  totalQuestions        Int
+  correctCount          Int
+  averageResponseTimeMs Int?
+  attentionScore        Float
+  evaluationGrade       Float
+  level                 AttentionLevel
+  computedAt            DateTime       @default(now())
 
   session ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   class   Class        @relation(fields: [classId], references: [id], onDelete: Cascade)

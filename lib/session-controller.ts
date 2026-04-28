@@ -10,6 +10,16 @@ type TxClient = Omit<
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
 >;
 
+function shuffle<T>(items: T[]) {
+  return [...items].sort(() => Math.random() - 0.5);
+}
+
+function selectSessionQuestions<T>(items: T[]) {
+  const randomized = shuffle(items);
+  const targetCount = Math.min(randomized.length, randomized.length >= 5 ? 5 : 4);
+  return randomized.slice(0, targetCount);
+}
+
 export async function startClassSession(params: {
   prisma: PrismaClient;
   teacherId: string;
@@ -44,16 +54,14 @@ export async function startClassSession(params: {
     where: {
       classId,
       isActive: true
-    },
-    orderBy: {
-      createdAt: "asc"
     }
   });
 
-  if (questions.length === 0) {
-    throw new Error("Add at least one active MCQ before starting a session.");
+  if (questions.length < 4) {
+    throw new Error("Add at least 4 active MCQs before starting a session.");
   }
 
+  const selectedQuestions = selectSessionQuestions(questions);
   const startedAt = new Date();
 
   return prisma.classSession.create({
@@ -64,10 +72,10 @@ export async function startClassSession(params: {
       intervalSeconds,
       startedAt,
       sessionQuestions: {
-        create: questions.map((question, index) => ({
+        create: selectedQuestions.map((question, index) => ({
           questionId: question.id,
           orderNo: index + 1,
-          dueAt: new Date(startedAt.getTime() + index * intervalSeconds * 1000)
+          dueAt: new Date(startedAt.getTime() + (index + 1) * intervalSeconds * 1000)
         }))
       }
     },
@@ -75,6 +83,9 @@ export async function startClassSession(params: {
       sessionQuestions: {
         include: {
           question: true
+        },
+        orderBy: {
+          orderNo: "asc"
         }
       }
     }
@@ -148,13 +159,13 @@ export async function getDueQuestionForStudent(params: {
       ? {
           id: dueQuestion.question.id,
           prompt: dueQuestion.question.prompt,
+          dueAt: dueQuestion.dueAt,
           options: {
             A: dueQuestion.question.optionA,
             B: dueQuestion.question.optionB,
             C: dueQuestion.question.optionC,
             D: dueQuestion.question.optionD
-          },
-          dueAt: dueQuestion.dueAt
+          }
         }
       : null
   };
@@ -212,6 +223,12 @@ export async function submitStudentResponse(params: {
     throw new Error("Question is not scheduled for this session.");
   }
 
+  const now = new Date();
+  const responseTimeMs = Math.max(
+    0,
+    now.getTime() - scheduledQuestion.dueAt.getTime()
+  );
+
   return prisma.response.create({
     data: {
       sessionId: session.id,
@@ -219,7 +236,11 @@ export async function submitStudentResponse(params: {
       questionId: question.id,
       studentId,
       selectedOption,
-      isCorrect: selectedOption === question.correctOption
+      isCorrect: selectedOption === question.correctOption,
+      responseStatus: "ANSWERED",
+      dueAt: scheduledQuestion.dueAt,
+      responseTimeMs,
+      respondedAt: now
     }
   });
 }
@@ -243,7 +264,11 @@ export async function endClassSession(params: {
           enrollments: true
         }
       },
-      sessionQuestions: true
+      sessionQuestions: {
+        include: {
+          question: true
+        }
+      }
     }
   });
 
@@ -257,13 +282,24 @@ export async function endClassSession(params: {
     throw new Error("No scheduled questions found.");
   }
 
+  const endedAt = new Date();
+
   await prisma.$transaction(async (tx) => {
     await tx.classSession.update({
       where: { id: session.id },
       data: {
         status: "ENDED",
-        endedAt: new Date()
+        endedAt
       }
+    });
+
+    await createUnansweredResponses({
+      tx,
+      sessionId: session.id,
+      classId: session.classId,
+      enrollments: session.class.enrollments,
+      sessionQuestions: session.sessionQuestions,
+      endedAt
     });
 
     await computeScoresForSession({
@@ -271,14 +307,65 @@ export async function endClassSession(params: {
       sessionId: session.id,
       classId: session.classId,
       enrollments: session.class.enrollments,
-      totalQuestions
+      totalQuestions,
+      intervalSeconds: session.intervalSeconds
     });
   });
 
   return {
     success: true,
-    message: "Session ended and scores computed."
+    message: "Session ended. Unanswered responses and scores were computed."
   };
+}
+
+async function createUnansweredResponses(params: {
+  tx: TxClient;
+  sessionId: string;
+  classId: string;
+  enrollments: { studentId: string }[];
+  sessionQuestions: { questionId: string; dueAt: Date }[];
+  endedAt: Date;
+}) {
+  const { tx, sessionId, classId, enrollments, sessionQuestions, endedAt } = params;
+
+  for (const enrollment of enrollments) {
+    const existingResponses = await tx.response.findMany({
+      where: {
+        sessionId,
+        classId,
+        studentId: enrollment.studentId
+      },
+      select: {
+        questionId: true
+      }
+    });
+
+    const existingQuestionIds = new Set(
+      existingResponses.map((response) => response.questionId)
+    );
+
+    const missingResponses = sessionQuestions
+      .filter((item) => !existingQuestionIds.has(item.questionId))
+      .map((item) => ({
+        sessionId,
+        classId,
+        questionId: item.questionId,
+        studentId: enrollment.studentId,
+        selectedOption: null,
+        isCorrect: false,
+        responseStatus: "UNANSWERED" as const,
+        dueAt: item.dueAt,
+        responseTimeMs: null,
+        respondedAt: endedAt
+      }));
+
+    if (missingResponses.length > 0) {
+      await tx.response.createMany({
+        data: missingResponses,
+        skipDuplicates: true
+      });
+    }
+  }
 }
 
 async function computeScoresForSession(params: {
@@ -287,8 +374,16 @@ async function computeScoresForSession(params: {
   classId: string;
   enrollments: { studentId: string }[];
   totalQuestions: number;
+  intervalSeconds: number;
 }) {
-  const { tx, sessionId, classId, enrollments, totalQuestions } = params;
+  const {
+    tx,
+    sessionId,
+    classId,
+    enrollments,
+    totalQuestions,
+    intervalSeconds
+  } = params;
 
   for (const enrollment of enrollments) {
     const responses = await tx.response.findMany({
@@ -299,10 +394,36 @@ async function computeScoresForSession(params: {
       }
     });
 
-    const answeredCount = responses.length;
-    const correctCount = responses.filter((response) => response.isCorrect).length;
+    const answeredResponses = responses.filter(
+      (response) => response.responseStatus === "ANSWERED"
+    );
 
-    const attentionScore = computeAttentionScore(answeredCount, totalQuestions);
+    const answeredCount = answeredResponses.length;
+    const unansweredCount = Math.max(0, totalQuestions - answeredCount);
+    const correctCount = answeredResponses.filter(
+      (response) => response.isCorrect
+    ).length;
+
+    const responseTimes = answeredResponses
+      .map((response) => response.responseTimeMs)
+      .filter((value): value is number => typeof value === "number");
+
+    const averageResponseTimeMs =
+      responseTimes.length > 0
+        ? Math.round(
+            responseTimes.reduce((sum, value) => sum + value, 0) /
+              responseTimes.length
+          )
+        : null;
+
+    const attentionScore = computeAttentionScore({
+      answeredCount,
+      correctCount,
+      totalQuestions,
+      averageResponseTimeMs,
+      intervalSeconds
+    });
+
     const evaluationGrade = computeEvaluationGrade(correctCount, totalQuestions);
     const level = getAttentionLevel(attentionScore);
 
@@ -316,8 +437,10 @@ async function computeScoresForSession(params: {
       update: {
         classId,
         answeredCount,
+        unansweredCount,
         totalQuestions,
         correctCount,
+        averageResponseTimeMs,
         attentionScore,
         evaluationGrade,
         level,
@@ -328,8 +451,10 @@ async function computeScoresForSession(params: {
         classId,
         studentId: enrollment.studentId,
         answeredCount,
+        unansweredCount,
         totalQuestions,
         correctCount,
+        averageResponseTimeMs,
         attentionScore,
         evaluationGrade,
         level

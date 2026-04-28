@@ -1,6 +1,10 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #840808;
+  --color-brand-dark: #5f0505;
+  --color-brand-light: #f8eaea;
+}
 
 :root {
   --brand: #840808;
@@ -14,9 +18,20 @@ body {
 }
 
 .btn-brand {
-  @apply rounded-lg bg-brand px-4 py-2 font-semibold text-white transition hover:bg-brand-dark;
+  border-radius: 0.5rem;
+  background: var(--brand);
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  color: white;
+}
+
+.btn-brand:hover {
+  background: var(--brand-dark);
 }
 
 .card-brand {
-  @apply rounded-2xl border-t-4 border-brand bg-white shadow-lg;
+  border-radius: 1rem;
+  border-top: 4px solid var(--brand);
+  background: white;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
 }
