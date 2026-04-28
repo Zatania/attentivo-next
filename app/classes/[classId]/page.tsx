@@ -4,6 +4,8 @@ import { requireTeacher } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { QuestionCreateForm } from "@/components/QuestionCreateForm";
 import { SessionControls } from "@/components/SessionControls";
+import { LiveSessionPanel } from "@/components/LiveSessionPanel";
+import { QuestionStatusButton } from "@/components/QuestionStatusButton";
 
 type PageProps = {
   params: Promise<{
@@ -29,6 +31,9 @@ export default async function ClassDetailPage({ params }: PageProps) {
       enrollments: {
         include: {
           student: true
+        },
+        orderBy: {
+          joinedAt: "desc"
         }
       },
       sessions: {
@@ -58,7 +63,10 @@ export default async function ClassDetailPage({ params }: PageProps) {
   return (
     <main className="min-h-screen px-6 py-10">
       <section className="mx-auto max-w-7xl">
-        <Link href="/dashboard/teacher" className="text-sm font-semibold text-brand">
+        <Link
+          href="/dashboard/teacher"
+          className="text-sm font-semibold text-brand"
+        >
           ← Back to Dashboard
         </Link>
 
@@ -66,10 +74,13 @@ export default async function ClassDetailPage({ params }: PageProps) {
           <p className="text-sm font-semibold uppercase tracking-wide text-brand">
             Class Dashboard
           </p>
+
           <h1 className="mt-2 text-3xl font-bold">{targetClass.name}</h1>
+
           <p className="mt-2 text-slate-600">
             {targetClass.description || "No description."}
           </p>
+
           <p className="mt-4 font-semibold text-brand">
             Class Code: {targetClass.classCode}
           </p>
@@ -86,6 +97,8 @@ export default async function ClassDetailPage({ params }: PageProps) {
           </div>
 
           <div className="space-y-6">
+            {activeSession && <LiveSessionPanel sessionId={activeSession.id} />}
+
             <section className="rounded-2xl bg-white p-6 shadow">
               <h2 className="text-lg font-bold">MCQ Bank</h2>
 
@@ -99,7 +112,21 @@ export default async function ClassDetailPage({ params }: PageProps) {
                   {targetClass.questions.map((question) => (
                     <div key={question.id} className="rounded-xl border p-4">
                       <p className="font-medium">{question.prompt}</p>
-                      <p className="mt-2 text-sm text-slate-600">
+
+                      <div className="mt-2 grid gap-1 text-sm text-slate-600 sm:grid-cols-2">
+                        <p>A. {question.optionA}</p>
+                        <p>B. {question.optionB}</p>
+                        <p>C. {question.optionC}</p>
+                        <p>D. {question.optionD}</p>
+                      </div>
+
+                      <QuestionStatusButton questionId={question.id} isActive={question.isActive} />
+
+                      <p className="mt-2 text-xs font-semibold text-slate-500">
+                        Status: {question.isActive ? "Active" : "Inactive"}
+                      </p>
+
+                      <p className="mt-2 text-sm font-semibold text-brand">
                         Correct Answer: {question.correctOption}
                       </p>
                     </div>
@@ -124,11 +151,16 @@ export default async function ClassDetailPage({ params }: PageProps) {
                         <th className="py-2">Email</th>
                       </tr>
                     </thead>
+
                     <tbody>
                       {targetClass.enrollments.map((enrollment) => (
                         <tr key={enrollment.id} className="border-b">
-                          <td className="py-2">{enrollment.student.fullName}</td>
-                          <td className="py-2">{enrollment.student.email}</td>
+                          <td className="py-2">
+                            {enrollment.student.fullName}
+                          </td>
+                          <td className="py-2">
+                            {enrollment.student.email}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -150,21 +182,30 @@ export default async function ClassDetailPage({ params }: PageProps) {
                     <div key={session.id} className="rounded-xl border p-4">
                       <div className="flex flex-wrap justify-between gap-2">
                         <div>
-                          <p className="font-bold">
-                            {session.status} Session
-                          </p>
+                          <p className="font-bold">{session.status} Session</p>
+
                           <p className="text-sm text-slate-600">
                             Started: {session.startedAt.toLocaleString()}
                           </p>
+
                           {session.endedAt && (
                             <p className="text-sm text-slate-600">
                               Ended: {session.endedAt.toLocaleString()}
                             </p>
                           )}
                         </div>
+
+                        {session.status === "ENDED" && (
+                          <a
+                            href={`/api/sessions/${session.id}/report`}
+                            className="h-fit rounded-lg border border-brand px-3 py-2 text-sm font-semibold text-brand hover:bg-brand-light"
+                          >
+                            Export CSV
+                          </a>
+                        )}
                       </div>
 
-                      {session.scores.length > 0 && (
+                      {session.scores.length > 0 ? (
                         <div className="mt-4 overflow-x-auto">
                           <table className="w-full text-left text-sm">
                             <thead>
@@ -178,10 +219,13 @@ export default async function ClassDetailPage({ params }: PageProps) {
                                 <th className="py-2">Level</th>
                               </tr>
                             </thead>
+
                             <tbody>
                               {session.scores.map((score) => (
                                 <tr key={score.id} className="border-b">
-                                  <td className="py-2">{score.student.fullName}</td>
+                                  <td className="py-2">
+                                    {score.student.fullName}
+                                  </td>
                                   <td className="py-2">
                                     {score.answeredCount}/{score.totalQuestions}
                                   </td>
@@ -193,7 +237,9 @@ export default async function ClassDetailPage({ params }: PageProps) {
                                   </td>
                                   <td className="py-2">
                                     {score.averageResponseTimeMs
-                                      ? `${Math.round(score.averageResponseTimeMs / 1000)}s`
+                                      ? `${Math.round(
+                                          score.averageResponseTimeMs / 1000
+                                        )}s`
                                       : "N/A"}
                                   </td>
                                   <td className="py-2">
@@ -205,6 +251,11 @@ export default async function ClassDetailPage({ params }: PageProps) {
                             </tbody>
                           </table>
                         </div>
+                      ) : (
+                        <p className="mt-4 text-sm text-slate-500">
+                          No computed scores yet. Scores are generated after the
+                          active session is ended.
+                        </p>
                       )}
                     </div>
                   ))}

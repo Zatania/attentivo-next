@@ -1,28 +1,35 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import crypto from "crypto";
+import { randomBytes } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { signAuthToken } from "@/lib/jwt";
 
+export const runtime = "nodejs";
+
 const RegisterSchema = z.object({
-  fullName: z.string().min(2),
-  email: z.string().email(),
-  password: z.string().min(8),
+  fullName: z.string().trim().min(2, "Full name is required."),
+  email: z.string().trim().email("Valid email is required.").toLowerCase(),
+  password: z.string().min(8, "Password must be at least 8 characters."),
   role: z.enum(["TEACHER", "STUDENT"])
 });
 
 export async function POST(req: Request) {
   try {
-    const body = RegisterSchema.parse(await req.json());
+    const json = await req.json();
+    const body = RegisterSchema.parse(json);
 
     const existing = await prisma.user.findUnique({
-      where: { email: body.email }
+      where: {
+        email: body.email
+      }
     });
 
     if (existing) {
       return NextResponse.json(
-        { error: "Email is already registered." },
+        {
+          error: "Email is already registered."
+        },
         { status: 409 }
       );
     }
@@ -37,7 +44,7 @@ export async function POST(req: Request) {
         role: body.role,
         extensionToken:
           body.role === "STUDENT"
-            ? crypto.randomBytes(32).toString("hex")
+            ? randomBytes(32).toString("hex")
             : null
       },
       select: {
@@ -54,9 +61,12 @@ export async function POST(req: Request) {
       role: user.role
     });
 
-    const res = NextResponse.json({ user });
+    const response = NextResponse.json({
+      success: true,
+      user
+    });
 
-    res.cookies.set("attentivo_session", token, {
+    response.cookies.set("attentivo_session", token, {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
@@ -64,11 +74,29 @@ export async function POST(req: Request) {
       maxAge: 60 * 60 * 24 * 7
     });
 
-    return res;
-  } catch {
+    return response;
+  } catch (error) {
+    console.error("REGISTER_ERROR:", error);
+
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        {
+          error: error.issues[0]?.message ?? "Invalid registration input."
+        },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json(
-      { error: "Invalid registration request." },
-      { status: 400 }
+      {
+        error:
+          process.env.NODE_ENV === "development"
+            ? error instanceof Error
+              ? error.message
+              : "Unknown registration error."
+            : "Unable to create account."
+      },
+      { status: 500 }
     );
   }
 }

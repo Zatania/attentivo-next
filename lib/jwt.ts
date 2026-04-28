@@ -1,7 +1,13 @@
 import { SignJWT, jwtVerify } from "jose";
 
+const rawSecret = process.env.AUTH_SECRET;
+
+if (!rawSecret && process.env.NODE_ENV === "production") {
+  throw new Error("AUTH_SECRET is required in production.");
+}
+
 const secret = new TextEncoder().encode(
-  process.env.AUTH_SECRET ?? "replace-this-secret-in-production"
+  rawSecret ?? "development-only-attentivo-secret-change-me"
 );
 
 export type AuthTokenPayload = {
@@ -17,7 +23,9 @@ export async function signAuthToken(payload: AuthTokenPayload) {
     .sign(secret);
 }
 
-export async function verifyAuthToken(token: string): Promise<AuthTokenPayload | null> {
+export async function verifyAuthToken(
+  token: string
+): Promise<AuthTokenPayload | null> {
   try {
     const { payload } = await jwtVerify(token, secret);
 

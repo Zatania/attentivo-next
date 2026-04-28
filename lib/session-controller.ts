@@ -1,22 +1,25 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import {
   computeAttentionScore,
   computeEvaluationGrade,
   getAttentionLevel
 } from "@/lib/score";
 
-type TxClient = Omit<
-  PrismaClient,
-  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
->;
-
 function shuffle<T>(items: T[]) {
-  return [...items].sort(() => Math.random() - 0.5);
+  const cloned = [...items];
+
+  for (let index = cloned.length - 1; index > 0; index--) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [cloned[index], cloned[randomIndex]] = [cloned[randomIndex], cloned[index]];
+  }
+
+  return cloned;
 }
 
 function selectSessionQuestions<T>(items: T[]) {
   const randomized = shuffle(items);
   const targetCount = Math.min(randomized.length, randomized.length >= 5 ? 5 : 4);
+
   return randomized.slice(0, targetCount);
 }
 
@@ -32,11 +35,20 @@ export async function startClassSession(params: {
     where: {
       id: classId,
       teacherId
+    },
+    include: {
+      enrollments: true
     }
   });
 
   if (!targetClass) {
     throw new Error("Class not found or not owned by teacher.");
+  }
+
+  if (targetClass.enrollments.length === 0) {
+    throw new Error(
+      "At least one student must be enrolled before starting a session."
+    );
   }
 
   const existingActiveSession = await prisma.classSession.findFirst({
@@ -75,7 +87,9 @@ export async function startClassSession(params: {
         create: selectedQuestions.map((question, index) => ({
           questionId: question.id,
           orderNo: index + 1,
-          dueAt: new Date(startedAt.getTime() + (index + 1) * intervalSeconds * 1000)
+          dueAt: new Date(
+            startedAt.getTime() + (index + 1) * intervalSeconds * 1000
+          )
         }))
       }
     },
@@ -98,7 +112,7 @@ export async function getDueQuestionForStudent(params: {
 }) {
   const { prisma, studentId } = params;
 
-  const activeSession = await prisma.classSession.findFirst({
+  const activeSessions = await prisma.classSession.findMany({
     where: {
       status: "ACTIVE",
       class: {
@@ -124,39 +138,43 @@ export async function getDueQuestionForStudent(params: {
           dueAt: "asc"
         }
       }
+    },
+    orderBy: {
+      startedAt: "desc"
     }
   });
 
-  if (!activeSession) {
+  if (activeSessions.length === 0) {
     return {
       active: false as const
     };
   }
 
-  const answered = await prisma.response.findMany({
-    where: {
-      sessionId: activeSession.id,
-      classId: activeSession.classId,
-      studentId
-    },
-    select: {
-      questionId: true
-    }
-  });
+  for (const activeSession of activeSessions) {
+    const answered = await prisma.response.findMany({
+      where: {
+        sessionId: activeSession.id,
+        classId: activeSession.classId,
+        studentId
+      },
+      select: {
+        questionId: true
+      }
+    });
 
-  const answeredIds = new Set(answered.map((item) => item.questionId));
+    const answeredIds = new Set(answered.map((item) => item.questionId));
 
-  const dueQuestion = activeSession.sessionQuestions.find(
-    (item) => !answeredIds.has(item.questionId)
-  );
+    const dueQuestion = activeSession.sessionQuestions.find(
+      (item) => !answeredIds.has(item.questionId)
+    );
 
-  return {
-    active: true as const,
-    sessionId: activeSession.id,
-    classId: activeSession.classId,
-    className: activeSession.class.name,
-    question: dueQuestion
-      ? {
+    if (dueQuestion) {
+      return {
+        active: true as const,
+        sessionId: activeSession.id,
+        classId: activeSession.classId,
+        className: activeSession.class.name,
+        question: {
           id: dueQuestion.question.id,
           prompt: dueQuestion.question.prompt,
           dueAt: dueQuestion.dueAt,
@@ -167,7 +185,13 @@ export async function getDueQuestionForStudent(params: {
             D: dueQuestion.question.optionD
           }
         }
-      : null
+      };
+    }
+  }
+
+  return {
+    active: true as const,
+    question: null
   };
 }
 
@@ -221,6 +245,20 @@ export async function submitStudentResponse(params: {
 
   if (!scheduledQuestion) {
     throw new Error("Question is not scheduled for this session.");
+  }
+
+  const existing = await prisma.response.findUnique({
+    where: {
+      sessionId_questionId_studentId: {
+        sessionId: session.id,
+        questionId: question.id,
+        studentId
+      }
+    }
+  });
+
+  if (existing) {
+    return existing;
   }
 
   const now = new Date();
@@ -286,7 +324,9 @@ export async function endClassSession(params: {
 
   await prisma.$transaction(async (tx) => {
     await tx.classSession.update({
-      where: { id: session.id },
+      where: {
+        id: session.id
+      },
       data: {
         status: "ENDED",
         endedAt
@@ -319,14 +359,21 @@ export async function endClassSession(params: {
 }
 
 async function createUnansweredResponses(params: {
-  tx: TxClient;
+  tx: Prisma.TransactionClient;
   sessionId: string;
   classId: string;
   enrollments: { studentId: string }[];
   sessionQuestions: { questionId: string; dueAt: Date }[];
   endedAt: Date;
 }) {
-  const { tx, sessionId, classId, enrollments, sessionQuestions, endedAt } = params;
+  const {
+    tx,
+    sessionId,
+    classId,
+    enrollments,
+    sessionQuestions,
+    endedAt
+  } = params;
 
   for (const enrollment of enrollments) {
     const existingResponses = await tx.response.findMany({
@@ -369,7 +416,7 @@ async function createUnansweredResponses(params: {
 }
 
 async function computeScoresForSession(params: {
-  tx: TxClient;
+  tx: Prisma.TransactionClient;
   sessionId: string;
   classId: string;
   enrollments: { studentId: string }[];

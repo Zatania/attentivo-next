@@ -4,9 +4,11 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { signAuthToken } from "@/lib/jwt";
 
+export const runtime = "nodejs";
+
 const LoginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1)
+  email: z.string().trim().email("Valid email is required.").toLowerCase(),
+  password: z.string().min(1, "Password is required.")
 });
 
 export async function POST(req: Request) {
@@ -14,7 +16,9 @@ export async function POST(req: Request) {
     const body = LoginSchema.parse(await req.json());
 
     const user = await prisma.user.findUnique({
-      where: { email: body.email }
+      where: {
+        email: body.email
+      }
     });
 
     if (!user) {
@@ -24,9 +28,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const validPassword = await bcrypt.compare(body.password, user.passwordHash);
+    const isPasswordValid = await bcrypt.compare(
+      body.password,
+      user.passwordHash
+    );
 
-    if (!validPassword) {
+    if (!isPasswordValid) {
       return NextResponse.json(
         { error: "Invalid email or password." },
         { status: 401 }
@@ -38,7 +45,8 @@ export async function POST(req: Request) {
       role: user.role
     });
 
-    const res = NextResponse.json({
+    const response = NextResponse.json({
+      success: true,
       user: {
         id: user.id,
         fullName: user.fullName,
@@ -48,7 +56,7 @@ export async function POST(req: Request) {
       }
     });
 
-    res.cookies.set("attentivo_session", token, {
+    response.cookies.set("attentivo_session", token, {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
@@ -56,11 +64,27 @@ export async function POST(req: Request) {
       maxAge: 60 * 60 * 24 * 7
     });
 
-    return res;
-  } catch {
+    return response;
+  } catch (error) {
+    console.error("LOGIN_ERROR:", error);
+
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        {
+          error: error.issues[0]?.message ?? "Invalid login input."
+        },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json(
-      { error: "Invalid login request." },
-      { status: 400 }
+      {
+        error:
+          process.env.NODE_ENV === "development" && error instanceof Error
+            ? error.message
+            : "Unable to login."
+      },
+      { status: 500 }
     );
   }
 }

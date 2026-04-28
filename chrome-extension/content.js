@@ -1,3 +1,5 @@
+const PENDING_QUESTION_MAX_AGE_MS = 30 * 60 * 1000;
+
 function buildQuestionKey(sessionId, questionId) {
   return `attentivo:${sessionId}:${questionId}`;
 }
@@ -25,7 +27,8 @@ chrome.runtime.onMessage.addListener(async (message) => {
       pendingQuestionPayload: {
         sessionId,
         question,
-        appUrl
+        appUrl,
+        savedAt: Date.now()
       }
     });
 
@@ -40,6 +43,19 @@ chrome.storage.local.get(
     const submittedQuestionKeys = result.submittedQuestionKeys || [];
 
     if (!pending?.sessionId || !pending?.question?.id) return;
+
+    const isExpired =
+      typeof pending.savedAt === "number" &&
+      Date.now() - pending.savedAt > PENDING_QUESTION_MAX_AGE_MS;
+
+    if (isExpired) {
+      chrome.storage.local.set({
+        pendingQuestionPayload: null,
+        pendingAnswer: null
+      });
+
+      return;
+    }
 
     const questionKey = buildQuestionKey(
       pending.sessionId,
@@ -134,54 +150,57 @@ async function submitAnswer(appUrl, sessionId, questionId, selectedOption) {
     status.textContent = "Submitting...";
   }
 
-  chrome.storage.local.get(["extensionToken", "submittedQuestionKeys"], async (result) => {
-    try {
-      const response = await fetch(`${appUrl}/api/responses/submit`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          extensionToken: result.extensionToken,
-          sessionId,
-          questionId,
-          selectedOption
-        })
-      });
+  chrome.storage.local.get(
+    ["extensionToken", "submittedQuestionKeys"],
+    async (result) => {
+      try {
+        const response = await fetch(`${appUrl}/api/responses/submit`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            extensionToken: result.extensionToken,
+            sessionId,
+            questionId,
+            selectedOption
+          })
+        });
 
-      if (!response.ok) {
-        if (status) {
-          status.textContent = "Answer was not submitted. Please try again.";
+        if (!response.ok) {
+          if (status) {
+            status.textContent = "Answer was not submitted. Please try again.";
+          }
+
+          return;
         }
 
-        return;
-      }
+        const questionKey = buildQuestionKey(sessionId, questionId);
+        const submittedQuestionKeys = result.submittedQuestionKeys || [];
 
-      const questionKey = buildQuestionKey(sessionId, questionId);
-      const submittedQuestionKeys = result.submittedQuestionKeys || [];
+        chrome.storage.local.set({
+          submittedQuestionKeys: Array.from(
+            new Set([...submittedQuestionKeys, questionKey])
+          ),
+          pendingQuestionPayload: null,
+          pendingAnswer: null
+        });
 
-      chrome.storage.local.set({
-        submittedQuestionKeys: Array.from(
-          new Set([...submittedQuestionKeys, questionKey])
-        ),
-        pendingQuestionPayload: null,
-        pendingAnswer: null
-      });
+        if (status) {
+          status.textContent = "Submitted. Thank you.";
+        }
 
-      if (status) {
-        status.textContent = "Submitted. Thank you.";
-      }
-
-      setTimeout(() => {
-        removeExistingPopup();
-      }, 1000);
-    } catch {
-      if (status) {
-        status.textContent =
-          "Network error. Your selected answer was saved locally and can be retried.";
+        setTimeout(() => {
+          removeExistingPopup();
+        }, 1000);
+      } catch {
+        if (status) {
+          status.textContent =
+            "Network error. Your selected answer was saved locally and can be retried.";
+        }
       }
     }
-  });
+  );
 }
 
 function escapeHtml(value) {

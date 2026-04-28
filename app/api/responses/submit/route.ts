@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { submitStudentResponse } from "@/lib/session-controller";
 
+export const runtime = "nodejs";
+
 const SubmitResponseSchema = z.object({
   extensionToken: z.string().min(20),
   sessionId: z.string().min(1),
@@ -22,7 +24,9 @@ export async function POST(req: Request) {
 
     if (!student || student.role !== "STUDENT") {
       return NextResponse.json(
-        { error: "Invalid student token." },
+        {
+          error: "Invalid student token."
+        },
         { status: 401 }
       );
     }
@@ -40,12 +44,23 @@ export async function POST(req: Request) {
       response
     });
   } catch (error) {
+    console.error("SUBMIT_RESPONSE_ERROR:", error);
+
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        {
+          error: error.issues[0]?.message ?? "Invalid response input."
+        },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json(
       {
         error:
-          error instanceof Error
+          process.env.NODE_ENV === "development" && error instanceof Error
             ? error.message
-            : "Unable to submit response. It may already be submitted."
+            : "Unable to submit response."
       },
       { status: 400 }
     );

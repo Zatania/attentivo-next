@@ -1,6 +1,7 @@
 import { requireStudent } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { JoinClassForm } from "@/components/JoinClassForm";
+import { CopyButton } from "@/components/CopyButton";
 
 export default async function StudentDashboardPage() {
   const student = await requireStudent();
@@ -53,8 +54,24 @@ export default async function StudentDashboardPage() {
               <code className="mt-2 block break-all rounded bg-white px-3 py-2 text-xs">
                 {student.extensionToken}
               </code>
+              <CopyButton value={student.extensionToken} />
             </div>
           )}
+          <div className="mt-4 rounded-xl border border-brand/20 bg-white p-4">
+            <p className="text-sm font-semibold text-slate-900">
+              Chrome Extension Setup
+            </p>
+
+            <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-600">
+              <li>Open Chrome and go to chrome://extensions.</li>
+              <li>Enable Developer Mode.</li>
+              <li>Click Load unpacked.</li>
+              <li>Select the chrome-extension folder from this project.</li>
+              <li>Open the ATTENTIVO extension popup.</li>
+              <li>Paste your extension token and save.</li>
+              <li>Join the Google Meet session using the same Chrome browser.</li>
+            </ol>
+          </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
