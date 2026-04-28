@@ -9,13 +9,46 @@ async function getExtensionToken() {
   });
 }
 
+function sendMessageToGoogleMeetTabs(message) {
+  chrome.tabs.query({}, (tabs) => {
+    for (const tab of tabs) {
+      if (!tab.id || !tab.url) continue;
+
+      const isGoogleMeet = tab.url.includes("meet.google.com");
+
+      if (!isGoogleMeet) continue;
+
+      chrome.tabs.sendMessage(tab.id, message, () => {
+        if (chrome.runtime.lastError) {
+          // Content script may not be ready yet. Safe to ignore.
+        }
+      });
+    }
+  });
+}
+
+async function clearMeetPopups() {
+  chrome.storage.local.set({
+    pendingQuestionPayload: null,
+    pendingAnswer: null
+  });
+
+  sendMessageToGoogleMeetTabs({
+    type: "ATTENTIVO_CLEAR_POPUP"
+  });
+}
+
 async function checkActiveSession() {
   const token = await getExtensionToken();
 
-  if (!token) return;
+  if (!token) {
+    await clearMeetPopups();
+    return;
+  }
 
   try {
     const response = await fetch(`${APP_URL}/api/extension/active-session`, {
+      method: "GET",
       headers: {
         Authorization: `Bearer ${token}`
       }
@@ -23,23 +56,25 @@ async function checkActiveSession() {
 
     const data = await response.json();
 
-    if (!data.active || !data.question) return;
+    if (!response.ok || !data.active) {
+      console.log("ATTENTIVO: no active session.");
+      await clearMeetPopups();
+      return;
+    }
 
-    chrome.tabs.query({}, (tabs) => {
-      for (const tab of tabs) {
-        if (!tab.id || !tab.url) continue;
+    if (data.active && !data.question) {
+      console.log(
+        "ATTENTIVO: active session, but no question is due yet.",
+        data.nextQuestionAt ? `Next question at ${data.nextQuestionAt}` : ""
+      );
+      return;
+    }
 
-        const isGoogleMeet = tab.url.includes("meet.google.com");
-
-        if (!isGoogleMeet) continue;
-
-        chrome.tabs.sendMessage(tab.id, {
-          type: "ATTENTIVO_QUESTION",
-          payload: {
-            ...data,
-            appUrl: APP_URL
-          }
-        });
+    sendMessageToGoogleMeetTabs({
+      type: "ATTENTIVO_QUESTION",
+      payload: {
+        ...data,
+        appUrl: APP_URL
       }
     });
   } catch (error) {

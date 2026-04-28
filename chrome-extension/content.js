@@ -9,19 +9,36 @@ function removeExistingPopup() {
   if (existing) existing.remove();
 }
 
-chrome.runtime.onMessage.addListener(async (message) => {
+function clearPendingPopupState() {
+  chrome.storage.local.set({
+    pendingQuestionPayload: null,
+    pendingAnswer: null
+  });
+}
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === "ATTENTIVO_CLEAR_POPUP") {
+    removeExistingPopup();
+    clearPendingPopupState();
+    return;
+  }
+
   if (message.type !== "ATTENTIVO_QUESTION") return;
 
   const { sessionId, question, appUrl } = message.payload;
 
-  if (!question) return;
+  if (!sessionId || !question?.id || !appUrl) return;
 
   const questionKey = buildQuestionKey(sessionId, question.id);
 
   chrome.storage.local.get(["submittedQuestionKeys"], (result) => {
     const submittedQuestionKeys = result.submittedQuestionKeys || [];
 
-    if (submittedQuestionKeys.includes(questionKey)) return;
+    if (submittedQuestionKeys.includes(questionKey)) {
+      removeExistingPopup();
+      clearPendingPopupState();
+      return;
+    }
 
     chrome.storage.local.set({
       pendingQuestionPayload: {
@@ -42,18 +59,17 @@ chrome.storage.local.get(
     const pending = result.pendingQuestionPayload;
     const submittedQuestionKeys = result.submittedQuestionKeys || [];
 
-    if (!pending?.sessionId || !pending?.question?.id) return;
+    if (!pending?.sessionId || !pending?.question?.id || !pending?.appUrl) {
+      return;
+    }
 
     const isExpired =
       typeof pending.savedAt === "number" &&
       Date.now() - pending.savedAt > PENDING_QUESTION_MAX_AGE_MS;
 
     if (isExpired) {
-      chrome.storage.local.set({
-        pendingQuestionPayload: null,
-        pendingAnswer: null
-      });
-
+      removeExistingPopup();
+      clearPendingPopupState();
       return;
     }
 
@@ -62,7 +78,11 @@ chrome.storage.local.get(
       pending.question.id
     );
 
-    if (submittedQuestionKeys.includes(questionKey)) return;
+    if (submittedQuestionKeys.includes(questionKey)) {
+      removeExistingPopup();
+      clearPendingPopupState();
+      return;
+    }
 
     showQuestionPopup(pending.sessionId, pending.question, pending.appUrl);
   }
@@ -109,6 +129,12 @@ function showQuestionPopup(sessionId, question, appUrl) {
     button.addEventListener("click", async () => {
       const selectedOption = button.getAttribute("data-option");
 
+      popup.querySelectorAll("[data-option]").forEach((item) => {
+        item.disabled = true;
+        item.style.opacity = "0.7";
+        item.style.cursor = "not-allowed";
+      });
+
       chrome.storage.local.set({
         pendingAnswer: {
           sessionId,
@@ -154,6 +180,10 @@ async function submitAnswer(appUrl, sessionId, questionId, selectedOption) {
     ["extensionToken", "submittedQuestionKeys"],
     async (result) => {
       try {
+        if (!result.extensionToken) {
+          throw new Error("Missing extension token.");
+        }
+
         const response = await fetch(`${appUrl}/api/responses/submit`, {
           method: "POST",
           headers: {
@@ -167,24 +197,19 @@ async function submitAnswer(appUrl, sessionId, questionId, selectedOption) {
           })
         });
 
-        if (!response.ok) {
-          if (status) {
-            status.textContent = "Answer was not submitted. Please try again.";
-          }
+        let data = {};
 
-          return;
+        try {
+          data = await response.json();
+        } catch {
+          data = {};
         }
 
-        const questionKey = buildQuestionKey(sessionId, questionId);
-        const submittedQuestionKeys = result.submittedQuestionKeys || [];
+        if (!response.ok) {
+          throw new Error(data.error || "Answer was not submitted.");
+        }
 
-        chrome.storage.local.set({
-          submittedQuestionKeys: Array.from(
-            new Set([...submittedQuestionKeys, questionKey])
-          ),
-          pendingQuestionPayload: null,
-          pendingAnswer: null
-        });
+        markQuestionSubmitted(sessionId, questionId);
 
         if (status) {
           status.textContent = "Submitted. Thank you.";
@@ -192,15 +217,44 @@ async function submitAnswer(appUrl, sessionId, questionId, selectedOption) {
 
         setTimeout(() => {
           removeExistingPopup();
-        }, 1000);
-      } catch {
+        }, 800);
+      } catch (error) {
+        console.error("ATTENTIVO submit failed:", error);
+
         if (status) {
           status.textContent =
-            "Network error. Your selected answer was saved locally and can be retried.";
+            error instanceof Error
+              ? error.message
+              : "Network error. Please try again.";
+        }
+
+        const popup = document.getElementById("attentivo-popup");
+
+        if (popup) {
+          popup.querySelectorAll("[data-option]").forEach((item) => {
+            item.disabled = false;
+            item.style.opacity = "1";
+            item.style.cursor = "pointer";
+          });
         }
       }
     }
   );
+}
+
+function markQuestionSubmitted(sessionId, questionId) {
+  chrome.storage.local.get(["submittedQuestionKeys"], (result) => {
+    const questionKey = buildQuestionKey(sessionId, questionId);
+    const submittedQuestionKeys = result.submittedQuestionKeys || [];
+
+    chrome.storage.local.set({
+      submittedQuestionKeys: Array.from(
+        new Set([...submittedQuestionKeys, questionKey])
+      ),
+      pendingQuestionPayload: null,
+      pendingAnswer: null
+    });
+  });
 }
 
 function escapeHtml(value) {

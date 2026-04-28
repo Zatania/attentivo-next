@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { submitStudentResponse } from "@/lib/session-controller";
+import { withCorsHeaders } from "@/lib/cors";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,13 @@ const SubmitResponseSchema = z.object({
   questionId: z.string().min(1),
   selectedOption: z.enum(["A", "B", "C", "D"])
 });
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: withCorsHeaders()
+  });
+}
 
 export async function POST(req: Request) {
   try {
@@ -27,7 +35,10 @@ export async function POST(req: Request) {
         {
           error: "Invalid student token."
         },
-        { status: 401 }
+        {
+          status: 401,
+          headers: withCorsHeaders()
+        }
       );
     }
 
@@ -39,10 +50,16 @@ export async function POST(req: Request) {
       selectedOption: body.selectedOption
     });
 
-    return NextResponse.json({
-      success: true,
-      response
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        response
+      },
+      {
+        status: 200,
+        headers: withCorsHeaders()
+      }
+    );
   } catch (error) {
     console.error("SUBMIT_RESPONSE_ERROR:", error);
 
@@ -51,7 +68,10 @@ export async function POST(req: Request) {
         {
           error: error.issues[0]?.message ?? "Invalid response input."
         },
-        { status: 400 }
+        {
+          status: 400,
+          headers: withCorsHeaders()
+        }
       );
     }
 
@@ -62,7 +82,10 @@ export async function POST(req: Request) {
             ? error.message
             : "Unable to submit response."
       },
-      { status: 400 }
+      {
+        status: 400,
+        headers: withCorsHeaders()
+      }
     );
   }
 }

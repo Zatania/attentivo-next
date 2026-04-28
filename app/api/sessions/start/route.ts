@@ -4,9 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { requireTeacher } from "@/lib/auth";
 import { startClassSession } from "@/lib/session-controller";
 
+export const runtime = "nodejs";
+
 const StartSessionSchema = z.object({
   classId: z.string().min(1),
-  intervalSeconds: z.number().int().min(60).max(1800).default(300)
+  intervalSeconds: z.number().int().min(30).max(1800).default(300),
+  plannedDurationMinutes: z.number().int().min(5).max(240).default(120)
 });
 
 export async function POST(req: Request) {
@@ -18,7 +21,8 @@ export async function POST(req: Request) {
       prisma,
       teacherId: teacher.id,
       classId: body.classId,
-      intervalSeconds: body.intervalSeconds
+      intervalSeconds: body.intervalSeconds,
+      plannedDurationMinutes: body.plannedDurationMinutes
     });
 
     return NextResponse.json({

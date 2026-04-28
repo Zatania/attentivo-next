@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { FormEvent, useState } from "react";
 
 type ApiResponse = {
   success?: boolean;
@@ -29,11 +29,18 @@ export function SessionControls({
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  async function startSession(formData: FormData) {
+  async function startSession(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
     setError("");
     setIsLoading(true);
 
+    const formData = new FormData(event.currentTarget);
+
     const intervalSeconds = Number(formData.get("intervalSeconds"));
+    const plannedDurationMinutes = Number(
+      formData.get("plannedDurationMinutes")
+    );
 
     try {
       const response = await fetch("/api/sessions/start", {
@@ -43,7 +50,8 @@ export function SessionControls({
         },
         body: JSON.stringify({
           classId,
-          intervalSeconds
+          intervalSeconds,
+          plannedDurationMinutes
         })
       });
 
@@ -99,8 +107,9 @@ export function SessionControls({
       {activeSessionId ? (
         <div className="mt-4">
           <p className="mb-3 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">
-            There is an active session for this class. The live monitor below
-            will update automatically.
+            There is an active session for this class. Students should keep
+            Google Meet open in Chrome. Popups will appear when scheduled
+            questions become due.
           </p>
 
           <button
@@ -113,28 +122,49 @@ export function SessionControls({
           </button>
         </div>
       ) : (
-        <form action={startSession} className="mt-4 space-y-4">
+        <form onSubmit={startSession} className="mt-4 space-y-4">
           <div>
             <label className="text-sm font-medium">
-              Popup Interval in Seconds
+              Expected Google Meet Duration in Minutes
+            </label>
+
+            <input
+              name="plannedDurationMinutes"
+              type="number"
+              min={5}
+              max={240}
+              defaultValue={120}
+              className="mt-1 w-full rounded-lg border px-3 py-2"
+            />
+
+            <p className="mt-1 text-xs text-slate-500">
+              ATTENTIVO will randomly spread 4–5 MCQ popups across this session
+              duration. Use 5 minutes for testing.
+            </p>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium">
+              Fallback Popup Interval in Seconds
             </label>
 
             <input
               name="intervalSeconds"
               type="number"
-              min={60}
+              min={30}
               max={1800}
               defaultValue={300}
               className="mt-1 w-full rounded-lg border px-3 py-2"
             />
 
             <p className="mt-1 text-xs text-slate-500">
-              The system will randomly select 4–5 active MCQs and schedule them
-              during the live Google Meet class.
+              This is still stored for scoring and fallback timing. Recommended:
+              300 seconds for real classes, 60 seconds for testing.
             </p>
           </div>
 
           <button
+            type="submit"
             disabled={isLoading}
             className="rounded-lg bg-brand px-4 py-2 font-semibold text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
           >

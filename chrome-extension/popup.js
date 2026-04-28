@@ -18,9 +18,17 @@ saveButton.addEventListener("click", () => {
   const token = tokenInput.value.trim();
 
   if (!token) {
-    chrome.storage.local.remove(["extensionToken"], () => {
-      setStatus("Token cleared.", false);
-    });
+    chrome.storage.local.remove(
+      [
+        "extensionToken",
+        "pendingQuestionPayload",
+        "pendingAnswer",
+        "submittedQuestionKeys"
+      ],
+      () => {
+        setStatus("Token cleared.", false);
+      }
+    );
 
     return;
   }
@@ -32,7 +40,10 @@ saveButton.addEventListener("click", () => {
 
   chrome.storage.local.set(
     {
-      extensionToken: token
+      extensionToken: token,
+      pendingQuestionPayload: null,
+      pendingAnswer: null,
+      submittedQuestionKeys: []
     },
     () => {
       if (chrome.runtime.lastError) {

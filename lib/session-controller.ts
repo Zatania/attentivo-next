@@ -23,13 +23,71 @@ function selectSessionQuestions<T>(items: T[]) {
   return randomized.slice(0, targetCount);
 }
 
+function randomInt(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function buildRandomDueTimes(params: {
+  startedAt: Date;
+  questionCount: number;
+  plannedDurationMinutes: number;
+}) {
+  const { startedAt, questionCount, plannedDurationMinutes } = params;
+
+  const durationSeconds = Math.max(plannedDurationMinutes * 60, questionCount * 60);
+  const dueTimes: Date[] = [];
+
+  if (questionCount <= 0) return dueTimes;
+
+  const firstQuestionOffsetSeconds = Math.min(
+    randomInt(30, 90),
+    Math.max(20, durationSeconds - 30)
+  );
+
+  dueTimes.push(
+    new Date(startedAt.getTime() + firstQuestionOffsetSeconds * 1000)
+  );
+
+  if (questionCount === 1) return dueTimes;
+
+  const remainingCount = questionCount - 1;
+  const remainingStartSeconds = Math.min(120, Math.floor(durationSeconds * 0.2));
+  const remainingEndSeconds = Math.max(
+    remainingStartSeconds + remainingCount * 30,
+    durationSeconds - 60
+  );
+
+  const usableRange = Math.max(remainingEndSeconds - remainingStartSeconds, remainingCount * 60);
+  const bucketSize = usableRange / remainingCount;
+
+  for (let index = 0; index < remainingCount; index++) {
+    const bucketStart = Math.floor(remainingStartSeconds + index * bucketSize);
+    const bucketEnd = Math.floor(
+      remainingStartSeconds + (index + 1) * bucketSize
+    );
+
+    const offsetSeconds = randomInt(bucketStart, Math.max(bucketStart + 15, bucketEnd));
+
+    dueTimes.push(new Date(startedAt.getTime() + offsetSeconds * 1000));
+  }
+
+  return dueTimes.sort((a, b) => a.getTime() - b.getTime());
+}
+
 export async function startClassSession(params: {
   prisma: PrismaClient;
   teacherId: string;
   classId: string;
   intervalSeconds: number;
+  plannedDurationMinutes: number;
 }) {
-  const { prisma, teacherId, classId, intervalSeconds } = params;
+  const {
+    prisma,
+    teacherId,
+    classId,
+    intervalSeconds,
+    plannedDurationMinutes
+  } = params;
 
   const targetClass = await prisma.class.findFirst({
     where: {
@@ -76,20 +134,25 @@ export async function startClassSession(params: {
   const selectedQuestions = selectSessionQuestions(questions);
   const startedAt = new Date();
 
+  const dueTimes = buildRandomDueTimes({
+    startedAt,
+    questionCount: selectedQuestions.length,
+    plannedDurationMinutes
+  });
+
   return prisma.classSession.create({
     data: {
       classId,
       teacherId,
       status: "ACTIVE",
       intervalSeconds,
+      plannedDurationMinutes,
       startedAt,
       sessionQuestions: {
         create: selectedQuestions.map((question, index) => ({
           questionId: question.id,
           orderNo: index + 1,
-          dueAt: new Date(
-            startedAt.getTime() + (index + 1) * intervalSeconds * 1000
-          )
+          dueAt: dueTimes[index]
         }))
       }
     },
@@ -99,7 +162,7 @@ export async function startClassSession(params: {
           question: true
         },
         orderBy: {
-          orderNo: "asc"
+          dueAt: "asc"
         }
       }
     }
@@ -111,6 +174,7 @@ export async function getDueQuestionForStudent(params: {
   studentId: string;
 }) {
   const { prisma, studentId } = params;
+  const now = new Date();
 
   const activeSessions = await prisma.classSession.findMany({
     where: {
@@ -126,11 +190,6 @@ export async function getDueQuestionForStudent(params: {
     include: {
       class: true,
       sessionQuestions: {
-        where: {
-          dueAt: {
-            lte: new Date()
-          }
-        },
         include: {
           question: true
         },
@@ -150,6 +209,8 @@ export async function getDueQuestionForStudent(params: {
     };
   }
 
+  let nearestNextQuestionAt: Date | null = null;
+
   for (const activeSession of activeSessions) {
     const answered = await prisma.response.findMany({
       where: {
@@ -164,8 +225,12 @@ export async function getDueQuestionForStudent(params: {
 
     const answeredIds = new Set(answered.map((item) => item.questionId));
 
-    const dueQuestion = activeSession.sessionQuestions.find(
+    const unansweredQuestions = activeSession.sessionQuestions.filter(
       (item) => !answeredIds.has(item.questionId)
+    );
+
+    const dueQuestion = unansweredQuestions.find(
+      (item) => item.dueAt.getTime() <= now.getTime()
     );
 
     if (dueQuestion) {
@@ -174,6 +239,7 @@ export async function getDueQuestionForStudent(params: {
         sessionId: activeSession.id,
         classId: activeSession.classId,
         className: activeSession.class.name,
+        nextQuestionAt: dueQuestion.dueAt,
         question: {
           id: dueQuestion.question.id,
           prompt: dueQuestion.question.prompt,
@@ -187,11 +253,25 @@ export async function getDueQuestionForStudent(params: {
         }
       };
     }
+
+    const nextQuestion = unansweredQuestions.find(
+      (item) => item.dueAt.getTime() > now.getTime()
+    );
+
+    if (nextQuestion) {
+      if (
+        !nearestNextQuestionAt ||
+        nextQuestion.dueAt.getTime() < nearestNextQuestionAt.getTime()
+      ) {
+        nearestNextQuestionAt = nextQuestion.dueAt;
+      }
+    }
   }
 
   return {
     active: true as const,
-    question: null
+    question: null,
+    nextQuestionAt: nearestNextQuestionAt
   };
 }
 

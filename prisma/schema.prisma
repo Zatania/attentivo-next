@@ -76,14 +76,15 @@ model Enrollment {
 }
 
 model ClassSession {
-  id             String        @id @default(cuid())
-  classId         String
-  teacherId       String
-  status          SessionStatus @default(ACTIVE)
-  intervalSeconds Int           @default(300)
-  startedAt       DateTime      @default(now())
-  endedAt         DateTime?
-  createdAt       DateTime      @default(now())
+  id                     String        @id @default(cuid())
+  classId                 String
+  teacherId               String
+  status                  SessionStatus @default(ACTIVE)
+  intervalSeconds         Int           @default(300)
+  plannedDurationMinutes  Int           @default(120)
+  startedAt               DateTime      @default(now())
+  endedAt                 DateTime?
+  createdAt               DateTime      @default(now())
 
   class            Class             @relation(fields: [classId], references: [id], onDelete: Cascade)
   sessionQuestions SessionQuestion[]
