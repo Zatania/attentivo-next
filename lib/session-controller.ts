@@ -57,7 +57,11 @@ function buildRandomDueTimes(params: {
     durationSeconds - 60
   );
 
-  const usableRange = Math.max(remainingEndSeconds - remainingStartSeconds, remainingCount * 60);
+  const usableRange = Math.max(
+    remainingEndSeconds - remainingStartSeconds,
+    remainingCount * 60
+  );
+
   const bucketSize = usableRange / remainingCount;
 
   for (let index = 0; index < remainingCount; index++) {
@@ -66,7 +70,10 @@ function buildRandomDueTimes(params: {
       remainingStartSeconds + (index + 1) * bucketSize
     );
 
-    const offsetSeconds = randomInt(bucketStart, Math.max(bucketStart + 15, bucketEnd));
+    const offsetSeconds = randomInt(
+      bucketStart,
+      Math.max(bucketStart + 15, bucketEnd)
+    );
 
     dueTimes.push(new Date(startedAt.getTime() + offsetSeconds * 1000));
   }
@@ -78,6 +85,7 @@ export async function startClassSession(params: {
   prisma: PrismaClient;
   teacherId: string;
   classId: string;
+  questionSetId: string;
   intervalSeconds: number;
   plannedDurationMinutes: number;
 }) {
@@ -85,6 +93,7 @@ export async function startClassSession(params: {
     prisma,
     teacherId,
     classId,
+    questionSetId,
     intervalSeconds,
     plannedDurationMinutes
   } = params;
@@ -109,6 +118,24 @@ export async function startClassSession(params: {
     );
   }
 
+  const questionSet = await prisma.questionSet.findFirst({
+    where: {
+      id: questionSetId,
+      classId,
+      class: {
+        teacherId
+      }
+    }
+  });
+
+  if (!questionSet) {
+    throw new Error("Question set not found or not owned by teacher.");
+  }
+
+  if (!questionSet.isActive) {
+    throw new Error("Cannot start a session using an inactive question set.");
+  }
+
   const existingActiveSession = await prisma.classSession.findFirst({
     where: {
       classId,
@@ -123,12 +150,15 @@ export async function startClassSession(params: {
   const questions = await prisma.question.findMany({
     where: {
       classId,
+      questionSetId,
       isActive: true
     }
   });
 
   if (questions.length < 4) {
-    throw new Error("Add at least 4 active MCQs before starting a session.");
+    throw new Error(
+      "The selected question set must have at least 4 active MCQs before starting a session."
+    );
   }
 
   const selectedQuestions = selectSessionQuestions(questions);
@@ -144,6 +174,7 @@ export async function startClassSession(params: {
     data: {
       classId,
       teacherId,
+      questionSetId,
       status: "ACTIVE",
       intervalSeconds,
       plannedDurationMinutes,
@@ -157,6 +188,7 @@ export async function startClassSession(params: {
       }
     },
     include: {
+      questionSet: true,
       sessionQuestions: {
         include: {
           question: true
@@ -189,6 +221,7 @@ export async function getDueQuestionForStudent(params: {
     },
     include: {
       class: true,
+      questionSet: true,
       sessionQuestions: {
         include: {
           question: true
@@ -239,6 +272,7 @@ export async function getDueQuestionForStudent(params: {
         sessionId: activeSession.id,
         classId: activeSession.classId,
         className: activeSession.class.name,
+        questionSetTitle: activeSession.questionSet?.title ?? null,
         nextQuestionAt: dueQuestion.dueAt,
         question: {
           id: dueQuestion.question.id,

@@ -6,6 +6,8 @@ import { QuestionCreateForm } from "@/components/QuestionCreateForm";
 import { SessionControls } from "@/components/SessionControls";
 import { LiveSessionPanel } from "@/components/LiveSessionPanel";
 import { QuestionStatusButton } from "@/components/QuestionStatusButton";
+import { QuestionSetCreateForm } from "@/components/QuestionSetCreateForm";
+import { QuestionSetStatusButton } from "@/components/QuestionSetStatusButton";
 
 type PageProps = {
   params: Promise<{
@@ -23,9 +25,21 @@ export default async function ClassDetailPage({ params }: PageProps) {
       teacherId: teacher.id
     },
     include: {
-      questions: {
+      questionSets: {
         orderBy: {
           createdAt: "desc"
+        },
+        include: {
+          questions: {
+            orderBy: {
+              createdAt: "desc"
+            }
+          },
+          _count: {
+            select: {
+              questions: true
+            }
+          }
         }
       },
       enrollments: {
@@ -41,6 +55,7 @@ export default async function ClassDetailPage({ params }: PageProps) {
           startedAt: "desc"
         },
         include: {
+          questionSet: true,
           scores: {
             include: {
               student: true
@@ -91,46 +106,123 @@ export default async function ClassDetailPage({ params }: PageProps) {
             <SessionControls
               classId={targetClass.id}
               activeSessionId={activeSession?.id}
+              questionSets={targetClass.questionSets.map((set) => ({
+                id: set.id,
+                title: set.title,
+                isActive: set.isActive,
+                _count: {
+                  questions: set.questions.filter((question) => question.isActive)
+                    .length
+                }
+              }))}
             />
 
-            <QuestionCreateForm classId={targetClass.id} />
+            <QuestionSetCreateForm classId={targetClass.id} />
+
+            <QuestionCreateForm
+              classId={targetClass.id}
+              questionSets={targetClass.questionSets.map((set) => ({
+                id: set.id,
+                title: set.title,
+                isActive: set.isActive
+              }))}
+            />
           </div>
 
           <div className="space-y-6">
             {activeSession && <LiveSessionPanel sessionId={activeSession.id} />}
 
             <section className="rounded-2xl bg-white p-6 shadow">
-              <h2 className="text-lg font-bold">MCQ Bank</h2>
+              <h2 className="text-lg font-bold">Question Sets / Topic Banks</h2>
 
-              {targetClass.questions.length === 0 ? (
+              <p className="mt-1 text-sm text-slate-600">
+                Organize MCQs by lesson or topic. When starting a session,
+                choose one set and ATTENTIVO will randomly show 4–5 active MCQs.
+              </p>
+
+              {targetClass.questionSets.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-600">
-                  No MCQs yet. Add at least 4 active MCQs before starting a
-                  session.
+                  No question sets yet. Create a question set first.
                 </p>
               ) : (
-                <div className="mt-4 space-y-3">
-                  {targetClass.questions.map((question) => (
-                    <div key={question.id} className="rounded-xl border p-4">
-                      <p className="font-medium">{question.prompt}</p>
+                <div className="mt-4 space-y-4">
+                  {targetClass.questionSets.map((set) => {
+                    const activeQuestions = set.questions.filter(
+                      (question) => question.isActive
+                    );
 
-                      <div className="mt-2 grid gap-1 text-sm text-slate-600 sm:grid-cols-2">
-                        <p>A. {question.optionA}</p>
-                        <p>B. {question.optionB}</p>
-                        <p>C. {question.optionC}</p>
-                        <p>D. {question.optionD}</p>
+                    return (
+                      <div key={set.id} className="rounded-xl border p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <h3 className="font-bold">{set.title}</h3>
+
+                            <p className="mt-1 text-sm text-slate-600">
+                              {set.description || "No description."}
+                            </p>
+
+                            <p className="mt-2 text-xs font-semibold text-slate-500">
+                              Status: {set.isActive ? "Active" : "Inactive"} ·{" "}
+                              {activeQuestions.length} active MCQs ·{" "}
+                              {set.questions.length} total MCQs
+                            </p>
+                          </div>
+
+                          <QuestionSetStatusButton
+                            questionSetId={set.id}
+                            isActive={set.isActive}
+                          />
+                        </div>
+
+                        {activeQuestions.length < 4 && (
+                          <p className="mt-3 rounded-lg bg-yellow-50 px-4 py-3 text-sm text-yellow-700">
+                            This set needs at least 4 active MCQs before it can
+                            be used in a session.
+                          </p>
+                        )}
+
+                        {set.questions.length === 0 ? (
+                          <p className="mt-4 text-sm text-slate-500">
+                            No MCQs in this set yet.
+                          </p>
+                        ) : (
+                          <div className="mt-4 space-y-3">
+                            {set.questions.map((question) => (
+                              <div
+                                key={question.id}
+                                className="rounded-xl border bg-slate-50 p-4"
+                              >
+                                <p className="font-medium">{question.prompt}</p>
+
+                                <div className="mt-2 grid gap-1 text-sm text-slate-600 sm:grid-cols-2">
+                                  <p>A. {question.optionA}</p>
+                                  <p>B. {question.optionB}</p>
+                                  <p>C. {question.optionC}</p>
+                                  <p>D. {question.optionD}</p>
+                                </div>
+
+                                <div className="mt-3 flex flex-wrap items-center gap-3">
+                                  <QuestionStatusButton
+                                    questionId={question.id}
+                                    isActive={question.isActive}
+                                  />
+
+                                  <p className="text-xs font-semibold text-slate-500">
+                                    Status:{" "}
+                                    {question.isActive ? "Active" : "Inactive"}
+                                  </p>
+                                </div>
+
+                                <p className="mt-2 text-sm font-semibold text-brand">
+                                  Correct Answer: {question.correctOption}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-
-                      <QuestionStatusButton questionId={question.id} isActive={question.isActive} />
-
-                      <p className="mt-2 text-xs font-semibold text-slate-500">
-                        Status: {question.isActive ? "Active" : "Inactive"}
-                      </p>
-
-                      <p className="mt-2 text-sm font-semibold text-brand">
-                        Correct Answer: {question.correctOption}
-                      </p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -183,6 +275,11 @@ export default async function ClassDetailPage({ params }: PageProps) {
                       <div className="flex flex-wrap justify-between gap-2">
                         <div>
                           <p className="font-bold">{session.status} Session</p>
+
+                          <p className="text-sm text-slate-600">
+                            Question Set:{" "}
+                            {session.questionSet?.title ?? "Not specified"}
+                          </p>
 
                           <p className="text-sm text-slate-600">
                             Started: {session.startedAt.toLocaleString()}

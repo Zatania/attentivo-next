@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 
 const StartSessionSchema = z.object({
   classId: z.string().min(1),
+  questionSetId: z.string().min(1),
   intervalSeconds: z.number().int().min(30).max(1800).default(300),
   plannedDurationMinutes: z.number().int().min(5).max(240).default(120)
 });
@@ -21,6 +22,7 @@ export async function POST(req: Request) {
       prisma,
       teacherId: teacher.id,
       classId: body.classId,
+      questionSetId: body.questionSetId,
       intervalSeconds: body.intervalSeconds,
       plannedDurationMinutes: body.plannedDurationMinutes
     });

@@ -52,12 +52,13 @@ model Class {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  teacher     User             @relation("TeacherClasses", fields: [teacherId], references: [id], onDelete: Cascade)
-  enrollments Enrollment[]
-  sessions    ClassSession[]
-  questions   Question[]
-  responses   Response[]
-  scores      AttentionScore[]
+  teacher      User             @relation("TeacherClasses", fields: [teacherId], references: [id], onDelete: Cascade)
+  enrollments  Enrollment[]
+  sessions     ClassSession[]
+  questionSets QuestionSet[]
+  questions    Question[]
+  responses    Response[]
+  scores       AttentionScore[]
 
   @@index([teacherId])
 }
@@ -75,10 +76,28 @@ model Enrollment {
   @@index([studentId])
 }
 
+model QuestionSet {
+  id          String   @id @default(cuid())
+  classId     String
+  title       String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  class     Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  questions Question[]
+  sessions  ClassSession[]
+
+  @@index([classId])
+  @@index([isActive])
+}
+
 model ClassSession {
   id                     String        @id @default(cuid())
   classId                 String
   teacherId               String
+  questionSetId           String?
   status                  SessionStatus @default(ACTIVE)
   intervalSeconds         Int           @default(300)
   plannedDurationMinutes  Int           @default(120)
@@ -87,18 +106,21 @@ model ClassSession {
   createdAt               DateTime      @default(now())
 
   class            Class             @relation(fields: [classId], references: [id], onDelete: Cascade)
+  questionSet      QuestionSet?      @relation(fields: [questionSetId], references: [id], onDelete: SetNull)
   sessionQuestions SessionQuestion[]
   responses        Response[]
   scores           AttentionScore[]
 
   @@index([classId])
   @@index([teacherId])
+  @@index([questionSetId])
   @@index([status])
 }
 
 model Question {
   id            String   @id @default(cuid())
   classId       String
+  questionSetId String?
   prompt        String
   optionA       String
   optionB       String
@@ -109,10 +131,13 @@ model Question {
   createdAt     DateTime @default(now())
 
   class            Class             @relation(fields: [classId], references: [id], onDelete: Cascade)
+  questionSet      QuestionSet?      @relation(fields: [questionSetId], references: [id], onDelete: SetNull)
   sessionQuestions SessionQuestion[]
   responses        Response[]
 
   @@index([classId])
+  @@index([questionSetId])
+  @@index([isActive])
 }
 
 model SessionQuestion {

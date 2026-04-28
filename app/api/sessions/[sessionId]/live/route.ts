@@ -21,6 +21,7 @@ export async function GET(_req: Request, context: RouteContext) {
         teacherId: teacher.id
       },
       include: {
+        questionSet: true,
         class: {
           include: {
             enrollments: {
@@ -76,6 +77,8 @@ export async function GET(_req: Request, context: RouteContext) {
     return NextResponse.json({
       sessionId: session.id,
       classId: session.classId,
+      questionSetId: session.questionSetId,
+      questionSetTitle: session.questionSet?.title ?? null,
       status: session.status,
       totalQuestions,
       students

@@ -15,6 +15,8 @@ type LiveStudent = {
 type LiveSessionData = {
   sessionId: string;
   classId: string;
+  questionSetId?: string | null;
+  questionSetTitle?: string | null;
   status: string;
   totalQuestions: number;
   students: LiveStudent[];
@@ -69,9 +71,16 @@ export function LiveSessionPanel({ sessionId }: { sessionId: string }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold">Live Session Monitor</h2>
+
           <p className="mt-1 text-sm text-slate-600">
             Updates every 10 seconds while the session is active.
           </p>
+
+          {data?.questionSetTitle && (
+            <p className="mt-1 text-sm font-semibold text-brand">
+              Question Set: {data.questionSetTitle}
+            </p>
+          )}
         </div>
 
         <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">

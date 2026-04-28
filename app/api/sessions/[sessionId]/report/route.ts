@@ -34,6 +34,7 @@ export async function GET(_req: Request, context: RouteContext) {
       },
       include: {
         class: true,
+        questionSet: true,
         scores: {
           include: {
             student: {
@@ -59,6 +60,7 @@ export async function GET(_req: Request, context: RouteContext) {
 
     const csvHeader = [
       "Class",
+      "Question Set",
       "Session ID",
       "Session Date",
       "Student Name",
@@ -75,6 +77,7 @@ export async function GET(_req: Request, context: RouteContext) {
 
     const rows = session.scores.map((score) => [
       session.class.name,
+      session.questionSet?.title ?? "Not specified",
       session.id,
       session.startedAt.toISOString(),
       score.student.fullName,
@@ -98,10 +101,11 @@ export async function GET(_req: Request, context: RouteContext) {
       .join("\n");
 
     const classSlug = slugify(session.class.name) || "class";
+    const setSlug = slugify(session.questionSet?.title ?? "question-set");
     const datePart = formatDateForFilename(session.startedAt);
     const shortSessionId = session.id.slice(0, 8);
 
-    const filename = `attentivo-${classSlug}-${datePart}-session-${shortSessionId}.csv`;
+    const filename = `attentivo-${classSlug}-${setSlug}-${datePart}-session-${shortSessionId}.csv`;
 
     return new NextResponse(csv, {
       headers: {
