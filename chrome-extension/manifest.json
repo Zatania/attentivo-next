@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "ATTENTIVO Attention Tracker",
+  "version": "2.0.0",
+  "description": "Displays timed MCQ attention checks during active online classes.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "https://your-domain.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://meet.google.com/*",
+        "https://*.zoom.us/*",
+        "https://teams.microsoft.com/*"
+      ],
+      "js": ["content.js"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

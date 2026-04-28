@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  TEACHER
+  STUDENT
+}
+
+enum SessionStatus {
+  ACTIVE
+  ENDED
+}
+
+enum AttentionLevel {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model User {
+  id             String   @id @default(cuid())
+  fullName       String
+  email          String   @unique
+  passwordHash   String
+  role           UserRole
+  extensionToken String?  @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  classesTeaching Class[]      @relation("TeacherClasses")
+  enrollments     Enrollment[]
+  responses       Response[]
+  scores          AttentionScore[]
+}
+
+model Class {
+  id          String   @id @default(cuid())
+  teacherId   String
+  name        String
+  description String?
+  classCode   String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teacher     User       @relation("TeacherClasses", fields: [teacherId], references: [id], onDelete: Cascade)
+  enrollments Enrollment[]
+  sessions    ClassSession[]
+  questions   Question[]
+  responses Response[]
+  scores    AttentionScore[]
+
+  @@index([teacherId])
+}
+
+model Enrollment {
+  id        String   @id @default(cuid())
+  classId   String
+  studentId String
+  joinedAt  DateTime @default(now())
+
+  class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student User  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, studentId])
+  @@index([studentId])
+}
+
+model ClassSession {
+  id              String        @id @default(cuid())
+  classId          String
+  teacherId        String
+  status           SessionStatus @default(ACTIVE)
+  intervalSeconds  Int           @default(300)
+  startedAt        DateTime      @default(now())
+  endedAt          DateTime?
+  createdAt        DateTime      @default(now())
+
+  class            Class             @relation(fields: [classId], references: [id], onDelete: Cascade)
+  sessionQuestions SessionQuestion[]
+  responses        Response[]
+  scores           AttentionScore[]
+
+  @@index([classId])
+  @@index([teacherId])
+  @@index([status])
+}
+
+model Question {
+  id            String   @id @default(cuid())
+  classId       String
+  prompt        String
+  optionA       String
+  optionB       String
+  optionC       String
+  optionD       String
+  correctOption String
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  class            Class             @relation(fields: [classId], references: [id], onDelete: Cascade)
+  sessionQuestions SessionQuestion[]
+  responses        Response[]
+
+  @@index([classId])
+}
+
+model SessionQuestion {
+  id         String   @id @default(cuid())
+  sessionId  String
+  questionId String
+  orderNo    Int
+  dueAt      DateTime
+
+  session  ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionId])
+  @@index([sessionId])
+  @@index([dueAt])
+}
+
+model Response {
+  id             String   @id @default(cuid())
+  sessionId      String
+  classId        String
+  questionId     String
+  studentId      String
+  selectedOption String
+  isCorrect      Boolean
+  respondedAt    DateTime @default(now())
+
+  session  ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  class    Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  question Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  student  User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionId, studentId])
+  @@index([classId])
+  @@index([sessionId, classId])
+  @@index([studentId])
+}
+
+model AttentionScore {
+  id              String         @id @default(cuid())
+  sessionId       String
+  classId         String
+  studentId       String
+  answeredCount   Int
+  totalQuestions  Int
+  correctCount    Int
+  attentionScore  Float
+  evaluationGrade Float
+  level           AttentionLevel
+  computedAt      DateTime       @default(now())
+
+  session ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  class   Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentId])
+  @@index([classId])
+  @@index([sessionId, classId])
+  @@index([studentId])
+}
