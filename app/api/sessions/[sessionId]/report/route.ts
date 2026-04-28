@@ -10,6 +10,18 @@ type RouteContext = {
   }>;
 };
 
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "");
+}
+
+function formatDateForFilename(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
 export async function GET(_req: Request, context: RouteContext) {
   try {
     const teacher = await requireTeacher();
@@ -48,6 +60,7 @@ export async function GET(_req: Request, context: RouteContext) {
     const csvHeader = [
       "Class",
       "Session ID",
+      "Session Date",
       "Student Name",
       "Email",
       "Answered",
@@ -63,6 +76,7 @@ export async function GET(_req: Request, context: RouteContext) {
     const rows = session.scores.map((score) => [
       session.class.name,
       session.id,
+      session.startedAt.toISOString(),
       score.student.fullName,
       score.student.email,
       score.answeredCount,
@@ -83,10 +97,16 @@ export async function GET(_req: Request, context: RouteContext) {
       )
       .join("\n");
 
+    const classSlug = slugify(session.class.name) || "class";
+    const datePart = formatDateForFilename(session.startedAt);
+    const shortSessionId = session.id.slice(0, 8);
+
+    const filename = `attentivo-${classSlug}-${datePart}-session-${shortSessionId}.csv`;
+
     return new NextResponse(csv, {
       headers: {
-        "Content-Type": "text/csv",
-        "Content-Disposition": `attachment; filename="attentivo-session-${session.id}.csv"`
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}"`
       }
     });
   } catch (error) {

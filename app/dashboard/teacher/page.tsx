@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireTeacher } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ClassCreateForm } from "@/components/ClassCreateForm";
+import { LogoutButton } from "@/components/LogoutButton";
 
 export default async function TeacherDashboardPage() {
   const teacher = await requireTeacher();
@@ -28,14 +29,24 @@ export default async function TeacherDashboardPage() {
     <main className="min-h-screen px-6 py-10">
       <section className="mx-auto max-w-6xl">
         <div className="mb-8 rounded-2xl border-t-4 border-brand bg-white p-6 shadow">
-          <p className="text-sm font-semibold uppercase tracking-wide text-brand">
-            Teacher Dashboard
-          </p>
-          <h1 className="mt-2 text-3xl font-bold">Welcome, {teacher.fullName}</h1>
-          <p className="mt-2 text-slate-600">
-            Create classes, prepare MCQs, start attention sessions, and review
-            session-based reports.
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-wide text-brand">
+                Teacher Dashboard
+              </p>
+
+              <h1 className="mt-2 text-3xl font-bold">
+                Welcome, {teacher.fullName}
+              </h1>
+
+              <p className="mt-2 text-slate-600">
+                Create classes, prepare MCQs, start attention sessions, and
+                review session-based reports.
+              </p>
+            </div>
+
+            <LogoutButton />
+          </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
@@ -58,9 +69,11 @@ export default async function TeacherDashboardPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <h3 className="text-lg font-bold">{item.name}</h3>
+
                       <p className="mt-1 text-sm text-slate-600">
                         {item.description || "No description."}
                       </p>
+
                       <p className="mt-3 text-sm font-semibold text-brand">
                         Class Code: {item.classCode}
                       </p>
@@ -71,10 +84,12 @@ export default async function TeacherDashboardPage() {
                         <p className="font-bold">{item._count.enrollments}</p>
                         <p className="text-slate-500">Students</p>
                       </div>
+
                       <div>
                         <p className="font-bold">{item._count.questions}</p>
                         <p className="text-slate-500">MCQs</p>
                       </div>
+
                       <div>
                         <p className="font-bold">{item._count.sessions}</p>
                         <p className="text-slate-500">Sessions</p>

@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 
+export const runtime = "nodejs";
+
 export async function POST() {
-  const res = NextResponse.json({
+  const response = NextResponse.json({
     success: true,
     message: "Logged out."
   });
 
-  res.cookies.set("attentivo_session", "", {
+  response.cookies.set("attentivo_session", "", {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -14,5 +16,5 @@ export async function POST() {
     maxAge: 0
   });
 
-  return res;
+  return response;
 }

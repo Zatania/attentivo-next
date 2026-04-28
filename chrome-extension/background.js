@@ -50,4 +50,10 @@ async function checkActiveSession() {
 chrome.runtime.onInstalled.addListener(checkActiveSession);
 chrome.runtime.onStartup.addListener(checkActiveSession);
 
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.extensionToken) {
+    checkActiveSession();
+  }
+});
+
 setInterval(checkActiveSession, CHECK_INTERVAL_MS);

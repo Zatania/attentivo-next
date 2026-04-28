@@ -2,54 +2,23 @@
 <html>
   <head>
     <title>ATTENTIVO</title>
-    <style>
-      body {
-        width: 280px;
-        font-family: Arial, sans-serif;
-        padding: 12px;
-      }
-
-      h3 {
-        color: #840808;
-        margin-top: 0;
-      }
-
-      input {
-        width: 100%;
-        padding: 8px;
-        margin-bottom: 8px;
-      }
-
-      button {
-        width: 100%;
-        background: #840808;
-        color: white;
-        border: none;
-        padding: 9px;
-        border-radius: 6px;
-        cursor: pointer;
-      }
-    </style>
+    <link rel="stylesheet" href="popup.css" />
   </head>
+
   <body>
     <h3>ATTENTIVO</h3>
-    <p>Paste your student extension token.</p>
-    <input id="token" placeholder="Extension token" />
-    <button id="save">Save Token</button>
 
-    <script>
-      chrome.storage.local.get(["extensionToken"], (result) => {
-        if (result.extensionToken) {
-          document.getElementById("token").value = result.extensionToken;
-        }
-      });
+    <p class="description">
+      Paste your student extension token from the Student Dashboard.
+    </p>
 
-      document.getElementById("save").onclick = () => {
-        const token = document.getElementById("token").value.trim();
-        chrome.storage.local.set({ extensionToken: token }, () => {
-          alert("Token saved.");
-        });
-      };
-    </script>
+    <label for="token">Extension Token</label>
+    <input id="token" placeholder="Paste token here" />
+
+    <button id="save" type="button">Save Token</button>
+
+    <p id="status" class="status"></p>
+
+    <script src="popup.js"></script>
   </body>
 </html>
