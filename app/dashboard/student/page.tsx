@@ -1,11 +1,11 @@
-import { requireStudent } from "@/lib/auth";
+import { requireStudentPage } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { JoinClassForm } from "@/components/JoinClassForm";
 import { CopyButton } from "@/components/CopyButton";
 import { LogoutButton } from "@/components/LogoutButton";
 
 export default async function StudentDashboardPage() {
-  const student = await requireStudent();
+  const student = await requireStudentPage();
 
   const enrollments = await prisma.enrollment.findMany({
     where: {

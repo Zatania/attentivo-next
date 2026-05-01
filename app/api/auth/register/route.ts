@@ -4,6 +4,7 @@ import { randomBytes } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { signAuthToken } from "@/lib/jwt";
+import { authCookieName, getAuthCookieOptions } from "@/lib/cookie-options";
 
 export const runtime = "nodejs";
 
@@ -66,13 +67,7 @@ export async function POST(req: Request) {
       user
     });
 
-    response.cookies.set("attentivo_session", token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7
-    });
+    response.cookies.set(authCookieName, token, getAuthCookieOptions());
 
     return response;
   } catch (error) {

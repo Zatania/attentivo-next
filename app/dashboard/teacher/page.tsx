@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { requireTeacher } from "@/lib/auth";
+import { requireTeacherPage } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ClassCreateForm } from "@/components/ClassCreateForm";
 import { LogoutButton } from "@/components/LogoutButton";
 
 export default async function TeacherDashboardPage() {
-  const teacher = await requireTeacher();
+  const teacher = await requireTeacherPage();
 
   const classes = await prisma.class.findMany({
     where: {

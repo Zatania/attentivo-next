@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authCookieName, getClearAuthCookieOptions } from "@/lib/cookie-options";
 
 export const runtime = "nodejs";
 
@@ -8,13 +9,7 @@ export async function POST() {
     message: "Logged out."
   });
 
-  response.cookies.set("attentivo_session", "", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 0
-  });
+  response.cookies.set(authCookieName, "", getClearAuthCookieOptions());
 
   return response;
 }

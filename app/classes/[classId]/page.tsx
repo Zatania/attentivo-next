@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireTeacher } from "@/lib/auth";
+import { requireTeacherPage } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { QuestionCreateForm } from "@/components/QuestionCreateForm";
 import { SessionControls } from "@/components/SessionControls";
@@ -16,7 +16,7 @@ type PageProps = {
 };
 
 export default async function ClassDetailPage({ params }: PageProps) {
-  const teacher = await requireTeacher();
+  const teacher = await requireTeacherPage();
   const { classId } = await params;
 
   const targetClass = await prisma.class.findFirst({
